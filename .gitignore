@@ -1,3 +1,6 @@
 .idea
 docker
 config.properties
+servers.details
+servers.all.details
+servers.parallel

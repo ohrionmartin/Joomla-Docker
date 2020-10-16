@@ -41,11 +41,11 @@ if [ -d "$installFolder" ]; then
 
 
   # Install joomla Database stuff
-  mysql -u root -p"$DBRPASS" -h "$DBHOST" -e "drop database if exists $DBNAME;"
-  mysql -u root -p"$DBRPASS" -h "$DBHOST" -e "create database $DBNAME;"
-  mysql -u root -p"$DBRPASS" -h "$DBHOST" -e "create user '$DBUSER'@'%' identified with mysql_native_password;"
-  mysql -u root -p"$DBRPASS" -h "$DBHOST" -e "grant all on $DBNAME.* to '$DBUSER'@'%';"
-  mysql -u root -p"$DBRPASS" -h "$DBHOST" -e "set password for '$DBUSER'@'%' = PASSWORD('$DBPASS');"
+  mysql -u root -p"$DBROOTPASS" -h "$DBHOST" -e "drop database if exists $DBNAME;"
+  mysql -u root -p"$DBROOTPASS" -h "$DBHOST" -e "create database $DBNAME;"
+  mysql -u root -p"$DBROOTPASS" -h "$DBHOST" -e "create user '$DBUSER'@'%' identified with mysql_native_password;"
+  mysql -u root -p"$DBROOTPASS" -h "$DBHOST" -e "grant all on $DBNAME.* to '$DBUSER'@'%';"
+  mysql -u root -p"$DBROOTPASS" -h "$DBHOST" -e "set password for '$DBUSER'@'%' = PASSWORD('$DBPASS');"
 
   if [ -f $installFolder/sql/mysql/joomla.sql ]; then
     sed "s/#_/$DBPREFIX/g" $installFolder/sql/mysql/joomla.sql | mysql -u "$DBUSER" -p"$DBPASS" -h "$DBHOST" -D "$DBNAME"
@@ -55,20 +55,20 @@ if [ -d "$installFolder" ]; then
     sed "s/#_/$DBPREFIX/g" $installFolder/sql/mysql/supports.sql | mysql -u "$DBUSER" -p"$DBPASS" -h "$DBHOST" -D "$DBNAME"
   fi
 
+  # gives us the password hashed and ready for the database
   function getPassword(){
     pass=$1
     salt=`< /dev/urandom tr -dc "A-Za-z0-9" | head -c32`
     hash=$(echo -n $pass$salt | openssl md5)
     pass="$hash:$salt"
-    echo "$pass"
+    echo ${pass#*= }
   }
 
   # set the main user
-  HASH=$(getPassword "$WEBSITESUSERPASS")
-  PASSWORDHASH=${HASH#*= }
+  PASSWORDHASH=$(getPassword "$WEBSITESUSERPASS")
   USERID=$(( $RANDOM % 10 + 40 ))
   TODAY=$(date '+%Y-%m-%d %H:%M:%S') # 2020-10-15 00:00:00
-  mysql -u "$DBUSER" -p"$DBPASS" -h "$DBHOST" -D "$DBNAME" -e "INSERT INTO ${DBPREFIX}_users (id, name, username, email, password, registerDate, params, block) VALUES(${USERID}, '${WEBSITESUNAME}', '${WEBSITESUSERNAME}', '${WEBSITESEMAIL}', '${PASSWORDHASH}', '${TODAY}', '', 0)"
+  mysql -u "$DBUSER" -p"$DBPASS" -h "$DBHOST" -D "$DBNAME" -e "INSERT INTO ${DBPREFIX}_users (id, name, username, email, password, registerDate, params, block, requireReset) VALUES(${USERID}, '${WEBSITESUNAME}', '${WEBSITESUSERNAME}', '${WEBSITESEMAIL}', '${PASSWORDHASH}', '${TODAY}', '', 0, '${WEBSITESPASSRESET}')"
   mysql -u "$DBUSER" -p"$DBPASS" -h "$DBHOST" -D "$DBNAME" -e "INSERT INTO ${DBPREFIX}_user_usergroup_map (user_id, group_id) VALUES ('${USERID}', '8')"
   # set the manager user?
   # mysql -u "$DBUSER" -p "$DBPASS" -h "$DBHOST" -D "$DBNAME" -e "INSERT INTO ${DBPREFIX}_users (id, name, username, email, password, block) VALUES(43, 'Manager', 'manager', 'manager@example.com', '\$2y\$10\$GICucf86nqR95Jz0mGTPkej8Mvzll/DRdXVClsUOkzyIPl6XF.2hS', 0)"
@@ -81,4 +81,24 @@ if [ -d "$installFolder" ]; then
 
   # remove the installation folder
   rm -rf /var/www/html/installation
+
+  # we want to install the patch tester
+  if [ "$WEBSITESADDPATCHTESTER" -eq "1" ]; then
+    echo "Installing patch tester"
+    curl -o tmp/com_patchtester.zip -SL https://github.com/joomla-extensions/patchtester/releases/download/4.0.0/com_patchtester.zip
+    mkdir -p administrator/components/com_patchtester
+    mkdir -p media/com_patchtester
+    unzip -d administrator/components/com_patchtester tmp/com_patchtester.zip
+    mv -f administrator/components/com_patchtester/media/* media/com_patchtester
+    mv -f administrator/components/com_patchtester/admin/* administrator/components/com_patchtester
+    rm -rf administrator/components/com_patchtester/media
+    rm -rf administrator/components/com_patchtester/admin
+    # /home/docker/vendor/bin/joomla extension:install --www=/var/www "html" all
+    # PHP Fatal error:  Class Joomlatools\Console\Joomla\Application contains 1 abstract method and must therefore be declared
+    # abstract or implement the remaining methods (Joomla\Application\AbstractApplication::doExecute) in
+    # /home/docker/vendor/joomlatools/console/src/Joomlatools/Console/Joomla/Application.php on line 24
+
+    # so lets try to use Joomla default cli
+    # cli/joomla.php
+  fi
 fi

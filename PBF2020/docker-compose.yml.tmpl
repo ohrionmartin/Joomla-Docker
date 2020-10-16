@@ -60,11 +60,26 @@ services:
 
   {SMTPHOST}:
     image: schickling/mailcatcher
-    restart: unless-stopped
     container_name: {SMTPHOST}
+    restart: unless-stopped
     ports:
       - {PORTMC}:1080
+
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - {VOLWEBROOT}:/var/www/html
+    links:
+      - web
+    depends_on:
+      - web
+    command: certonly --webroot --webroot-path=/var/www/html --email {SSLEMAIL} --agree-tos --no-eff-email --staging -d {WEBSITEDOMAIN}
 
 volumes:
     {VOLWEBROOT}:
     {VOLDBHOST}:
+    certbot-etc:
+    certbot-var:
